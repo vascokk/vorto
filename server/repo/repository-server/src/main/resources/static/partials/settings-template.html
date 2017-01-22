@@ -133,6 +133,22 @@
 			</div>
 	  	</div>
 	  </div>
+	  
+	  <div class="row">
+	  	<div class="col-xs-4">
+	  		 <label>Access Token</label>
+	  	</div>
+	  	
+        <div class="col-xs-6 form-group" >
+            <input 	type="text" 
+          			name="accessToken"
+             		id="access_token"
+             		class="form-control" 
+             		placeholder="access token"
+             		ng-model="user.accessToken" />
+             <button class="btn btn-success" ng-disabled="user.accessToken != null" ng-click="generateAccessToken()">Generate</button>
+        </div>
+	  </div>
        
       <div class="row">
 	  	<div class="col-xs-4">

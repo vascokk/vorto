@@ -586,33 +586,47 @@ repositoryControllers.controller('SettingsController', [ '$scope','$http','$root
 
 	var currentEmailAddress = "";
 
-	$http.get('./rest/users/'+$rootScope.user).success(
-      function(data, status, headers, config) {
+	$scope.getUserDetails = function() {
+		$http.get('./rest/users/'+$rootScope.user).success(
+			      function(data, status, headers, config) {
 
-			if(data === ""){
-				$scope.userExists = false;
-			} else {
-				$scope.user = data;
+						if(data === ""){
+							$scope.userExists = false;
+						} else {
+							$scope.user = data;
 
-				currentEmailAddress = data.email;
-				currentUsername = data.username;
+							currentEmailAddress = data.email;
+							currentUsername = data.username;
 
-				$scope.userExists = true;
-			}
+							$scope.userExists = true;
+						}
 
-      }).error(function(data, status, headers, config) {
-      	 });
+			      }).error(function(data, status, headers, config) {
+			      	 });
+	}
+	
+	$scope.generateAccessToken = function() {
+		console.log("generating access token...");
+		$http.get('./rest/users/token').success(
+			      function(data, status, headers, config) {
+			    	  console.log(data);
+			    	  $scope.user.accessToken = null;
+			      }).error(function(data, status, headers, config) {
+			      	 });
+		
+	}
 
 	$scope.updateProfil = function(user){
 
 		$scope.put = null;
 
-		$http.put('./rest/users/'+$rootScope.user, user)
+		$http.put('./rest/users/', user)
 			.then(function(response) {
 				$scope.user = response.data;
-				if (response.status === 200){
+				if (response.status === 201){
 					$scope.update = true;
-				} else if (response.status !== 200){
+					$scope.getUserDetails();
+				} else if (response.status !== 201){
 					$scope.update = false;
 				}
 				$scope.put=true;
@@ -632,6 +646,8 @@ repositoryControllers.controller('SettingsController', [ '$scope','$http','$root
 	  		      	 });
 		}
 	}
+	
+	$scope.getUserDetails();
 
 }]);
 

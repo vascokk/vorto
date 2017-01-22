@@ -43,9 +43,6 @@ public class User {
     
     private boolean hasWatchOnRepository;
 
-    @Column(length = 60)
-    private String password;
-
     @Column(name = "role", nullable = false)
     @Enumerated(EnumType.STRING)
     private Role role;
@@ -77,8 +74,8 @@ public class User {
     public void setHasWatchOnRepository(boolean hasWatchOnRepository) {
         this.hasWatchOnRepository = hasWatchOnRepository;
     }
-    
-    public String getFirstName() {
+
+	public String getFirstName() {
         return firstName;
     }
 
@@ -102,14 +99,6 @@ public class User {
         this.email = username;
     }
 
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(final String password) {
-        this.password = password;
-    }
-
     public Role getRole() {
         return role;
     }
@@ -125,13 +114,13 @@ public class User {
     		return this.username;
     	}
     }
+
+	@Override
+	public String toString() {
+		return "User [id=" + id + ", firstName=" + firstName + ", lastName=" + lastName + ", username=" + username
+				+ ", email=" + email + ", hasWatchOnRepository=" + hasWatchOnRepository + ", role=" + role + "]";
+	}
     
-    @Override
-    public String toString() {
-        final StringBuilder builder = new StringBuilder();
-        builder.append("User [firstName=").append(firstName).append("]").append("[lastName=").append(lastName).append("]").append("[username=").append(username).append("]").append("[email=").append(email).append("]").append("[password=").append(password).append("]");
-        return builder.toString();
-    }
    
 
 }

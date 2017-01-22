@@ -12,21 +12,24 @@
  * Contributors:
  * Bosch Software Innovations GmbH - Please refer to git log
  */
-package org.eclipse.vorto.repository.web.identity;
+package org.eclipse.vorto.repository.web;
+
+import java.security.Principal;
+import java.util.Map;
 
 import javax.validation.Valid;
 
+import org.eclipse.vorto.repository.model.Role;
 import org.eclipse.vorto.repository.model.User;
-import org.eclipse.vorto.repository.model.UserDto;
-import org.eclipse.vorto.repository.service.IRegistrationService;
 import org.eclipse.vorto.repository.service.IUserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.oauth2.common.OAuth2AccessToken;
+import org.springframework.security.oauth2.provider.OAuth2Authentication;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -51,63 +54,61 @@ public class UserController {
     
 	@Autowired
 	private IUserRepository userRepository;
-	    
-    @Autowired
-	private IRegistrationService registrationService;
-    
-    @Autowired(required=false)
-    private PasswordEncoder passwordEncoder;
+//	
+//	@Autowired
+//	private DefaultTokenServices tokenService;
+
 		
 	@ApiOperation(value = "Returns a specified User")
 	@ApiResponses(value = { @ApiResponse(code = 404, message = "Not found"), 
 							@ApiResponse(code = 200, message = "OK")})
 	@RequestMapping(method = RequestMethod.GET,
 					value = "/users/{username}")
-	public ResponseEntity<User> getUser(@ApiParam(value = "Username", required = true) @PathVariable String username) {
+	public ResponseEntity<User> getUser(Principal oauthuser, @ApiParam(value = "Username", required = true) @PathVariable String username) {
+		User user = userRepository.findByUsername(username);
+		if (user != null) {
+			return new ResponseEntity<User>(user, HttpStatus.OK);
+		} else {
+			OAuth2Authentication oauth2user = (OAuth2Authentication)oauthuser;
+			UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken)oauth2user.getUserAuthentication();
+			Map<String,String> details = (Map<String,String>)token.getDetails();
+			user = new User();
+			user.setEmail(details.get("email"));
+			user.setUsername(details.get("login"));
+			user.setHasWatchOnRepository(false);
+			user.setRoles(Role.USER);
+			user.setFirstName(extractFirstName(details.get("name")));
+			user.setLastName(extractLastName(details.get("name")));
+			return new ResponseEntity<>(user,HttpStatus.OK);
+		}
 		
-		LOGGER.debug("User INFO: ", userRepository.findByUsername(username));
-		
-		return new ResponseEntity<User>(userRepository.findByUsername(username.toLowerCase()), HttpStatus.OK);
 	}
 	
-	@ApiOperation(value = "Creates a new User")
-	@RequestMapping(method = RequestMethod.POST,
+	@RequestMapping(method = RequestMethod.GET, value="/users/token")
+	public OAuth2AccessToken token(Principal principal) {
+//	    return tokenService.createAccessToken((OAuth2Authentication)principal);
+		return null;
+	}
+	
+	private String extractFirstName(String name) {
+		return name.split(" ")[0];
+	}
+	
+	private String extractLastName(String name) {
+		if (name.split(" ").length == 2) {
+			return name.split(" ")[1];
+		} else {
+			return null;
+		}
+	}
+
+	@ApiOperation(value = "Updates user")
+	@RequestMapping(method = RequestMethod.PUT,
 				value = "/users",
 	    		consumes = "application/json")
-	public ResponseEntity<Boolean> registerUserAccount(@ApiParam(value = "User Data Transfer Object", required = true) @RequestBody @Valid UserDto userDto) {
-		
-		if (userRepository.findByEmail(userDto.getEmail()) != null &&
-				userRepository.findByUsername(userDto.getUsername()) != null ) {           
-				return new ResponseEntity<Boolean>(false, HttpStatus.CREATED);
-			}
-		
-		LOGGER.debug("Register new user account with information: {}", userDto);
-		userDto.setPassword(passwordEncoder.encode(userDto.getPassword()));
-		registrationService.registerUser(userDto); 	
-		
-		return new ResponseEntity<Boolean>(true, HttpStatus.CREATED);
-	}
-	
-	@ApiOperation(value = "Update an existing User")
-	@RequestMapping(method = RequestMethod.PUT,
-					value = "/users/{username}")
-	public ResponseEntity<User> updateUser(	@ApiParam(value = "Username", required = true) @PathVariable String username, 
-											@ApiParam(value = "User Data Transfer Object", required = true) @RequestBody UserDto userDto) {
-	
-		User user = userRepository.findByUsername(username);
-		
-		if (user == null)
-			throw new UsernameNotFoundException("User does not exists");
-		
-		user.setFirstName(userDto.getFirstName());
-		user.setLastName(userDto.getLastName());
-		user.setUsername(userDto.getUsername().toLowerCase());
-		user.setEmail(userDto.getEmail());
-		user.setHasWatchOnRepository(userDto.getHasWatchOnRepository());
-		
-		userRepository.save(user);
-		
-		return new ResponseEntity<User>(userRepository.findByUsername(username), HttpStatus.OK);
+	public ResponseEntity<Boolean> updateUser(@ApiParam(value = "User", required = true) @RequestBody @Valid User user) {
+		this.userRepository.save(user);
+		return new ResponseEntity<Boolean>(false, HttpStatus.CREATED);
 	}
 	
 	/* checking uniqueness of specific values

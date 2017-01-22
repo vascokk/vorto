@@ -18,6 +18,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.security.oauth2.provider.token.AuthorizationServerTokenServices;
+import org.springframework.security.oauth2.provider.token.DefaultTokenServices;
+import org.springframework.security.oauth2.provider.token.TokenStore;
+import org.springframework.security.oauth2.provider.token.store.InMemoryTokenStore;
 
 @Configuration
 public class RepositoryConfiguration {
@@ -27,5 +31,19 @@ public class RepositoryConfiguration {
 	@Bean
 	public org.modeshape.jcr.RepositoryConfiguration repoConfiguration() throws Exception {
 		return org.modeshape.jcr.RepositoryConfiguration.read(new ClassPathResource(repositoryConfigFile).getURL());
+	}
+	
+	@Bean
+	public TokenStore tokenStore() {
+	    return new InMemoryTokenStore();
+	}
+
+	@Bean
+	public AuthorizationServerTokenServices tokenServices() {
+	    final DefaultTokenServices defaultTokenServices = new DefaultTokenServices();
+	    defaultTokenServices.setAccessTokenValiditySeconds(-1);
+
+	    defaultTokenServices.setTokenStore(tokenStore());
+	    return defaultTokenServices;
 	}
 }

@@ -16,14 +16,22 @@ package org.eclipse.vorto.repository;
 
 import static com.google.common.base.Predicates.or;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.servlet.Filter;
+
 import org.eclipse.vorto.repository.internal.service.ITemporaryStorage;
 import org.eclipse.vorto.repository.internal.service.InMemoryTemporaryStorage;
 import org.eclipse.vorto.repository.web.AngularCsrfHeaderFilter;
-import org.eclipse.vorto.repository.web.listeners.RESTAuthenticationEntryPoint;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.security.SecurityProperties;
+import org.springframework.boot.autoconfigure.security.oauth2.resource.ResourceServerProperties;
+import org.springframework.boot.autoconfigure.security.oauth2.resource.UserInfoTokenServices;
+import org.springframework.boot.context.embedded.FilterRegistrationBean;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -32,17 +40,24 @@ import org.springframework.http.HttpMethod;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
-import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.OAuth2ClientContext;
+import org.springframework.security.oauth2.client.OAuth2RestTemplate;
+import org.springframework.security.oauth2.client.filter.OAuth2ClientAuthenticationProcessingFilter;
+import org.springframework.security.oauth2.client.filter.OAuth2ClientContextFilter;
+import org.springframework.security.oauth2.client.token.grant.code.AuthorizationCodeResourceDetails;
+import org.springframework.security.oauth2.config.annotation.web.configuration.EnableAuthorizationServer;
+import org.springframework.security.oauth2.config.annotation.web.configuration.EnableOAuth2Client;
+import org.springframework.security.oauth2.config.annotation.web.configuration.EnableResourceServer;
+import org.springframework.security.oauth2.config.annotation.web.configuration.ResourceServerConfigurerAdapter;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.web.filter.CompositeFilter;
 
 import com.google.common.base.Predicate;
 
@@ -60,12 +75,21 @@ import springfox.documentation.swagger2.annotations.EnableSwagger2;
 @EnableSwagger2
 @EnableJpaRepositories
 @EnableScheduling
-public class VortoRepository {
+@EnableOAuth2Client
+@EnableAuthorizationServer
+@Order(6)
+public class VortoRepository extends WebSecurityConfigurerAdapter {
+
+	@Autowired
+	OAuth2ClientContext oauth2ClientContext;
+	
+	@Autowired
+	private UserDetailsService userDetailsService;
 
 	public static void main(String[] args) {
 		SpringApplication.run(VortoRepository.class, args);
 	}
-	
+
 	@Bean
 	public ITemporaryStorage createTempStorage() {
 		return new InMemoryTemporaryStorage();
@@ -73,17 +97,15 @@ public class VortoRepository {
 
 	@Bean
 	public Docket vortoApi() {
-		return new Docket(DocumentationType.SWAGGER_2).apiInfo(apiInfo()).useDefaultResponseMessages(false)
-				.select().paths(paths()).build();
+		return new Docket(DocumentationType.SWAGGER_2).apiInfo(apiInfo()).useDefaultResponseMessages(false).select()
+				.paths(paths()).build();
 
 	}
 
 	@SuppressWarnings("unchecked")
 	private Predicate<String> paths() {
-		return or(	PathSelectors.regex("/rest/secure.*"),
-					PathSelectors.regex("/rest/model.*"),
-					PathSelectors.regex("/rest/resolver.*"),
-					PathSelectors.regex("/rest/generation-router.*"));
+		return or(PathSelectors.regex("/rest/secure.*"), PathSelectors.regex("/rest/model.*"),
+				PathSelectors.regex("/rest/resolver.*"), PathSelectors.regex("/rest/generation-router.*"));
 	}
 
 	private ApiInfo apiInfo() {
@@ -96,69 +118,103 @@ public class VortoRepository {
 				"1.0.0", "", "Eclipse Vorto Team", "EPL", "https://eclipse.org/org/documents/epl-v10.php");
 	}
 
-	@Bean
-	public static PasswordEncoder encoder() {
-		return new BCryptPasswordEncoder(11);
+	@Override
+	protected void configure(HttpSecurity http) throws Exception {
+		
+		http.authorizeRequests().antMatchers("/user/**").permitAll()
+				.antMatchers(HttpMethod.PUT, "/rest/**").permitAll().antMatchers(HttpMethod.POST, "/rest/secure/**")
+				.authenticated().antMatchers(HttpMethod.DELETE, "/rest/**").authenticated()
+				.antMatchers(HttpMethod.GET, "/rest/**").permitAll().and()
+				.addFilterBefore(ssoFilter(), BasicAuthenticationFilter.class)
+				.addFilterAfter(new AngularCsrfHeaderFilter(), CsrfFilter.class).csrf()
+				.csrfTokenRepository(csrfTokenRepository()).and().csrf().disable().logout().logoutUrl("/logout")
+				.logoutSuccessUrl("/").and().headers().frameOptions().sameOrigin().httpStrictTransportSecurity()
+				.disable();
+
+	}
+	
+	@Autowired
+	public void configureGlobal(AuthenticationManagerBuilder auth) throws Exception {
+		auth.userDetailsService(userDetailsService);
+	}
+
+	private CsrfTokenRepository csrfTokenRepository() {
+		HttpSessionCsrfTokenRepository repository = new HttpSessionCsrfTokenRepository();
+		repository.setHeaderName("X-XSRF-TOKEN");
+		return repository;
 	}
 
 	@Configuration
-	@EnableWebSecurity
-	@EnableGlobalMethodSecurity(securedEnabled = true)
-	@Order(SecurityProperties.ACCESS_OVERRIDE_ORDER)
-	protected static class SecurityConfiguration extends WebSecurityConfigurerAdapter {
-
-		@Autowired
-		private UserDetailsService userDetailsService;
-
-		@Autowired
-		private RESTAuthenticationEntryPoint authenticationEntryPoint;
-
-		@Autowired
-		private PasswordEncoder passwordEncoder;
-
+	@EnableResourceServer
+	protected static class ResourceServerConfiguration extends ResourceServerConfigurerAdapter {
 		@Override
-		protected void configure(HttpSecurity http) throws Exception {
-
-			http.httpBasic().and().authorizeRequests()
-					.antMatchers(HttpMethod.GET, "/rest/**").permitAll()
-					.antMatchers("/user/**").permitAll()
-					.antMatchers(HttpMethod.PUT, "/rest/**").permitAll()
-					.antMatchers(HttpMethod.POST, "/rest/secure/**").authenticated()
-					.antMatchers(HttpMethod.DELETE, "/rest/**").authenticated()
-					.and()
-					.addFilterAfter(new AngularCsrfHeaderFilter(), CsrfFilter.class).csrf()
-					.csrfTokenRepository(csrfTokenRepository()).and().csrf().disable().logout().logoutUrl("/logout")
-					.logoutSuccessUrl("/")
-					.and()
-					.headers()
-					.frameOptions().sameOrigin()
-					.httpStrictTransportSecurity().disable();
-
-			http.exceptionHandling().authenticationEntryPoint(authenticationEntryPoint);
-		}
-
-		private CsrfTokenRepository csrfTokenRepository() {
-			HttpSessionCsrfTokenRepository repository = new HttpSessionCsrfTokenRepository();
-			repository.setHeaderName("X-XSRF-TOKEN");
-			return repository;
-		}
-
-		@Autowired
-		public void configureGlobal(AuthenticationManagerBuilder auth) throws Exception {
-			auth.userDetailsService(userDetailsService).passwordEncoder(passwordEncoder);
+		public void configure(HttpSecurity http) throws Exception {
+			http.antMatcher("/rest/model/**").authorizeRequests().anyRequest().authenticated();
 		}
 	}
-	
+
+	@Bean
+	public FilterRegistrationBean oauth2ClientFilterRegistration(OAuth2ClientContextFilter filter) {
+		FilterRegistrationBean registration = new FilterRegistrationBean();
+		registration.setFilter(filter);
+		registration.setOrder(-100);
+		return registration;
+	}
+
+	@Bean
+	@ConfigurationProperties("github")
+	public ClientResources github() {
+		return new ClientResources();
+	}
+
+	public Filter ssoFilter() {
+		CompositeFilter filter = new CompositeFilter();
+		List<Filter> filters = new ArrayList<>();
+		filters.add(ssoFilter(github(), "/login/github"));
+		filter.setFilters(filters);
+		return filter;
+	}
+
+	private Filter ssoFilter(ClientResources client, String path) {
+		OAuth2ClientAuthenticationProcessingFilter oAuth2ClientAuthenticationFilter = new OAuth2ClientAuthenticationProcessingFilter(
+				path);
+		OAuth2RestTemplate oAuth2RestTemplate = new OAuth2RestTemplate(client.getClient(), oauth2ClientContext);
+		oAuth2ClientAuthenticationFilter.setRestTemplate(oAuth2RestTemplate);
+		UserInfoTokenServices tokenServices = new UserInfoTokenServices(client.getResource().getUserInfoUri(),
+				client.getClient().getClientId());
+		tokenServices.setRestTemplate(oAuth2RestTemplate);
+		oAuth2ClientAuthenticationFilter.setTokenServices(tokenServices);
+		return oAuth2ClientAuthenticationFilter;
+	}
+
 	@Service
 	public static class ScheduleTask {
-	
+
 		@Autowired
 		private ITemporaryStorage storage;
-	
+
 		@Scheduled(fixedRate = 1000 * 60 * 60)
 		public void clearExpiredStorageItems() {
 			this.storage.clearExpired();
 		}
-	
+
 	}
+
+	class ClientResources {
+
+		@NestedConfigurationProperty
+		private AuthorizationCodeResourceDetails client = new AuthorizationCodeResourceDetails();
+
+		@NestedConfigurationProperty
+		private ResourceServerProperties resource = new ResourceServerProperties();
+
+		public AuthorizationCodeResourceDetails getClient() {
+			return client;
+		}
+
+		public ResourceServerProperties getResource() {
+			return resource;
+		}
+	}
+
 }
