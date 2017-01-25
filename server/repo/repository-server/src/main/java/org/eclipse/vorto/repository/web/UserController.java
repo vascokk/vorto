@@ -22,15 +22,14 @@ import javax.validation.Valid;
 import org.eclipse.vorto.repository.model.Role;
 import org.eclipse.vorto.repository.model.User;
 import org.eclipse.vorto.repository.service.IUserRepository;
+import org.jgroups.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.oauth2.common.OAuth2AccessToken;
 import org.springframework.security.oauth2.provider.OAuth2Authentication;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -63,9 +62,9 @@ public class UserController {
 	@ApiResponses(value = { @ApiResponse(code = 404, message = "Not found"), 
 							@ApiResponse(code = 200, message = "OK")})
 	@RequestMapping(method = RequestMethod.GET,
-					value = "/users/{username}")
-	public ResponseEntity<User> getUser(Principal oauthuser, @ApiParam(value = "Username", required = true) @PathVariable String username) {
-		User user = userRepository.findByUsername(username);
+					value = "/users")
+	public ResponseEntity<User> getUser(Principal oauthuser) {
+		User user = userRepository.findByUsername(oauthuser.getName());
 		if (user != null) {
 			return new ResponseEntity<User>(user, HttpStatus.OK);
 		} else {
@@ -82,12 +81,6 @@ public class UserController {
 			return new ResponseEntity<>(user,HttpStatus.OK);
 		}
 		
-	}
-	
-	@RequestMapping(method = RequestMethod.GET, value="/users/token")
-	public OAuth2AccessToken token(Principal principal) {
-//	    return tokenService.createAccessToken((OAuth2Authentication)principal);
-		return null;
 	}
 	
 	private String extractFirstName(String name) {
@@ -109,6 +102,12 @@ public class UserController {
 	public ResponseEntity<Boolean> updateUser(@ApiParam(value = "User", required = true) @RequestBody @Valid User user) {
 		this.userRepository.save(user);
 		return new ResponseEntity<Boolean>(false, HttpStatus.CREATED);
+	}
+	
+	@RequestMapping(method = RequestMethod.GET,
+			value = "/users/token", produces = "application/txt")
+	public String generateAccessToken() {
+		return UUID.randomUUID().toString();
 	}
 	
 	/* checking uniqueness of specific values

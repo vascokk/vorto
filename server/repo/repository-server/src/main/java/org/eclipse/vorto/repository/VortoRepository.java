@@ -34,7 +34,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.http.HttpMethod;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -48,10 +47,7 @@ import org.springframework.security.oauth2.client.OAuth2RestTemplate;
 import org.springframework.security.oauth2.client.filter.OAuth2ClientAuthenticationProcessingFilter;
 import org.springframework.security.oauth2.client.filter.OAuth2ClientContextFilter;
 import org.springframework.security.oauth2.client.token.grant.code.AuthorizationCodeResourceDetails;
-import org.springframework.security.oauth2.config.annotation.web.configuration.EnableAuthorizationServer;
 import org.springframework.security.oauth2.config.annotation.web.configuration.EnableOAuth2Client;
-import org.springframework.security.oauth2.config.annotation.web.configuration.EnableResourceServer;
-import org.springframework.security.oauth2.config.annotation.web.configuration.ResourceServerConfigurerAdapter;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
@@ -76,8 +72,6 @@ import springfox.documentation.swagger2.annotations.EnableSwagger2;
 @EnableJpaRepositories
 @EnableScheduling
 @EnableOAuth2Client
-@EnableAuthorizationServer
-@Order(6)
 public class VortoRepository extends WebSecurityConfigurerAdapter {
 
 	@Autowired
@@ -121,10 +115,11 @@ public class VortoRepository extends WebSecurityConfigurerAdapter {
 	@Override
 	protected void configure(HttpSecurity http) throws Exception {
 		
-		http.authorizeRequests().antMatchers("/user/**").permitAll()
+		http.httpBasic().and().authorizeRequests().antMatchers("/user/**").permitAll()
 				.antMatchers(HttpMethod.PUT, "/rest/**").permitAll().antMatchers(HttpMethod.POST, "/rest/secure/**")
 				.authenticated().antMatchers(HttpMethod.DELETE, "/rest/**").authenticated()
-				.antMatchers(HttpMethod.GET, "/rest/**").permitAll().and()
+				.antMatchers(HttpMethod.GET, "/rest/model/**").permitAll()
+				.antMatchers(HttpMethod.GET,"/rest/generation-router/**").authenticated().and()
 				.addFilterBefore(ssoFilter(), BasicAuthenticationFilter.class)
 				.addFilterAfter(new AngularCsrfHeaderFilter(), CsrfFilter.class).csrf()
 				.csrfTokenRepository(csrfTokenRepository()).and().csrf().disable().logout().logoutUrl("/logout")
@@ -142,15 +137,6 @@ public class VortoRepository extends WebSecurityConfigurerAdapter {
 		HttpSessionCsrfTokenRepository repository = new HttpSessionCsrfTokenRepository();
 		repository.setHeaderName("X-XSRF-TOKEN");
 		return repository;
-	}
-
-	@Configuration
-	@EnableResourceServer
-	protected static class ResourceServerConfiguration extends ResourceServerConfigurerAdapter {
-		@Override
-		public void configure(HttpSecurity http) throws Exception {
-			http.antMatcher("/rest/model/**").authorizeRequests().anyRequest().authenticated();
-		}
 	}
 
 	@Bean

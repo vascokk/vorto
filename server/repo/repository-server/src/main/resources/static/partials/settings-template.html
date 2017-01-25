@@ -140,13 +140,13 @@
 	  	</div>
 	  	
         <div class="col-xs-6 form-group" >
-            <input 	type="text" 
+            <input readonly type="text" 
           			name="accessToken"
              		id="access_token"
              		class="form-control" 
              		placeholder="access token"
-             		ng-model="user.accessToken" />
-             <button class="btn btn-success" ng-disabled="user.accessToken != null" ng-click="generateAccessToken()">Generate</button>
+             		ng-model="user.token" />
+             <button class="btn btn-success" ng-disabled="user.token != null" ng-click="generateAccessToken()">Generate</button>
         </div>
 	  </div>
        

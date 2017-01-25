@@ -39,6 +39,8 @@ public class User {
     @Column(unique=true)
     private String username;
     
+    private String token;
+    
     private String email;
     
     private boolean hasWatchOnRepository;
@@ -114,6 +116,14 @@ public class User {
     		return this.username;
     	}
     }
+    
+	public String getToken() {
+		return token;
+	}
+
+	public void setToken(String token) {
+		this.token = token;
+	}
 
 	@Override
 	public String toString() {

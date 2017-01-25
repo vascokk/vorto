@@ -587,7 +587,7 @@ repositoryControllers.controller('SettingsController', [ '$scope','$http','$root
 	var currentEmailAddress = "";
 
 	$scope.getUserDetails = function() {
-		$http.get('./rest/users/'+$rootScope.user).success(
+		$http.get('./rest/users/').success(
 			      function(data, status, headers, config) {
 
 						if(data === ""){
@@ -606,14 +606,11 @@ repositoryControllers.controller('SettingsController', [ '$scope','$http','$root
 	}
 	
 	$scope.generateAccessToken = function() {
-		console.log("generating access token...");
 		$http.get('./rest/users/token').success(
 			      function(data, status, headers, config) {
-			    	  console.log(data);
-			    	  $scope.user.accessToken = null;
+					$scope.user.token = data;
 			      }).error(function(data, status, headers, config) {
 			      	 });
-		
 	}
 
 	$scope.updateProfil = function(user){
